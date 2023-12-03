@@ -1,0 +1,13 @@
+SonovueSegers.zip
+ToDo.txt
+renal_tree.svg
+renal_tree_drawing.png
+geometry_data/vessel.stl
+geometry_data/mouse_brain/vessel.stl
+**/streamline*.csv
+**/Frame_*.mat
+**/Streams*.mat
+gui-development/
+acoustic-module-development/
+RESULTS/
+ground_truth_frames/
