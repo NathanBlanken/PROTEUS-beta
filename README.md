@@ -12,7 +12,7 @@ The flow simulation is saved in VTU format, which is converted to a MATLAB file 
 
 ## Flow solver module
 
-This is the general link: https://apes.osdn.io.
+This is the general link: https://github.com/apes-suite.
 
 The link to LBM solver documentation specifically is: https://geb.inf.tu-dresden.de/doxy/musubi/index.html.
 
