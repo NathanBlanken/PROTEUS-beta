@@ -10,4 +10,7 @@ Acquisition.NumberOfPulses = 1;
 Acquisition.Precompute = false;
 Acquisition.Folder = '';
 
+% Do not use parallel computing for tracking the microbubbles:
+Acquisition.ParallelTracking = false;
+
 end

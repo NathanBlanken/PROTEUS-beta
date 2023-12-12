@@ -1,6 +1,6 @@
 function self_sense_pressure = compute_self_sense_pressure(...
     kgrid, Grid, MB_idx, MB_points, mass_source, ...
-    medium, Nx, run_param)
+    medium, NX, run_param)
 
 N_MB = length(MB_idx);
 
@@ -23,27 +23,35 @@ dt = Grid.dt;
 
 % Choose Nx such that the total grid size has small prime factors (see
 % define_PML):
-max_prime = 3;
-Nx = optimize_grid_size(Nx, 2*PML.X_SIZE, max_prime);
-Nx = Nx-2*PML.X_SIZE;
+maxPrime = 5;
+NX = optimize_grid_size(NX, 2*PML.X_SIZE, maxPrime);
+NX = NX-2*PML.X_SIZE;
 
-Ny = Nx; % [voxels]
-Nz = Nx; % [voxels]
+NY = NX; % [voxels]
+NZ = NX; % [voxels]
+
+% Inherited properties of each local grid from the global grid:
+Grid_local.dt             = Grid.dt;
+Grid_local.full_size      = Grid.full_size;
+Grid_local.sensor_on_grid = Grid.sensor_on_grid;
 
 for MB_number = 1:N_MB
+
+    disp(['Computing self-sense pressure bubble ' num2str(MB_number) ...
+    ' out of ' num2str(N_MB) ' ...'])
 
     % Subscripts of the microbubble in the old grid: 
     [ax,ay,az] = ind2sub([Grid.Nx, Grid.Ny, Grid.Nz],MB_idx(MB_number));
 
     % Subscripts of the microbubble in the new grid:
-    bx = floor(Nx/2) + 1;
-    by = floor(Ny/2) + 1;
-    bz = floor(Nz/2) + 1;
+    bx = floor(NX/2) + 1;
+    by = floor(NY/2) + 1;
+    bz = floor(NZ/2) + 1;
 
     % Subscripts for slicing the old grid:
-    i = (1:Nx); I = i + ax - bx;
-    j = (1:Ny); J = j + ay - by;
-    k = (1:Nz); K = k + az - bz;
+    i = (1:NX); I = i + ax - bx;
+    j = (1:NY); J = j + ay - by;
+    k = (1:NZ); K = k + az - bz;
     
     % Remove subscripts outside the old grid:
     i(I<1|I>Grid.Nx) = [];  I(I<1|I>Grid.Nx) = []; 
@@ -58,19 +66,13 @@ for MB_number = 1:N_MB
     MB_idx_local = sub2ind([Nx,Ny,Nz],bx,by,bz);
 
     % Assign the new k-Wave grid:
-    Nt = size(mass_source,2);
     kgrid_local = kWaveGrid(Nx, dx, Ny, dy, Nz, dz);
-    kgrid_local.setTime(Nt, dt);
+    kgrid_local.setTime(kgrid.Nt, dt);
 
     % Properties of the local grid:
     Grid_local.x = Grid.x(I); Grid_local.Nx = Nx; Grid_local.dx = dx;
     Grid_local.y = Grid.y(J); Grid_local.Ny = Ny; Grid_local.dy = dy;
     Grid_local.z = Grid.z(K); Grid_local.Nz = Nz; Grid_local.dz = dz;
-    
-    Grid_local.dt = Grid.dt;
-    
-    Grid_local.full_size      = Grid.full_size;
-    Grid_local.sensor_on_grid = Grid.sensor_on_grid;
 
     % Define the properties of the propagation medium
     medium_local.sound_speed  = medium.sound_speed( I, J, K);
@@ -99,8 +101,7 @@ for MB_number = 1:N_MB
     sensed_p = sensor_weights*double(sensor_data.p);
     sensed_p = cast(full(sensed_p),class(sensor_data.p));
     
-    self_sense_pressure(MB_number,:) = ...
-        [sensed_p zeros(1, kgrid.Nt - Nt)];
+    self_sense_pressure(MB_number,:) = sensed_p;
 
 end
 

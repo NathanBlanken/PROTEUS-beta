@@ -6,7 +6,8 @@ function main_RF(filename, folder, savename, varargin)
 %           savename:    the folder to save the RF data
 %           varargin{1}: continue with the same k-Wave medium (boolean)
 %           varargin{2}: frame number to continue from (integer)
-%           varargin{3}: GPU device number
+%           varargin{3}: frame number to stop after (integer)
+%           varargin{4}: GPU device number (counting from zero)
 %
 % Alina Kuliesh,  Delft University of Technology
 % Nathan Blanken, University of Twente
@@ -21,6 +22,10 @@ load(filename,'Acquisition','Geometry','Medium',...
 
 % simulation settings
 run_param = sim_setup(SimulationParameters);
+
+% Microbubble parallel processing properties:
+Microbubble.BatchSize = run_param.MicrobubblesBatchSize;
+Microbubble.UseParfor = run_param.MicrobubblesUseParfor;
 
 % Location of the geometry data:
 Geometry.GeometriesPath = run_param.GeometriesPath;
@@ -46,7 +51,7 @@ if Acquisition.Continue
 else
     [medium, vessel_grid] = define_medium(Grid, Medium, Geometry);
     
-    save([savedir '/medium.mat'],'medium','vessel_grid','Grid')
+    save([savedir '/medium.mat'],'medium','vessel_grid','Grid','-v7.3')
 end
 
 % record signals long enough for back and forth pass of the wave
@@ -79,15 +84,14 @@ end
 
 % define sensor
 [sensor_MB_all, MB_idx_all, max_mb] = define_sensor_MB_all(...
-    Grid, folder, Acquisition.NumberOfFrames, ...
-    length(sequence), Geometry);
+    Grid, folder, Acquisition, length(sequence), Geometry);
 
 %==========================================================================
 % strucutre for time and memory estimation
 param.c_max = Medium.SpeedOfSoundMaximum;
 param.CFL = SimulationParameters.CFL;
 param.tr = run_param.tr;
-param.num_frames = Acquisition.NumberOfFrames;
+param.num_frames = Acquisition.EndFrame - Acquisition.StartFrame + 1;
 param.num_pulse = Acquisition.NumberOfPulses;
 param.num_int = SimulationParameters.NumberOfInteractions;
 param.max_mb = max_mb;
@@ -147,7 +151,13 @@ end
 %==========================================================================
 % Second & Third iterations
 
-for frame = Acquisition.StartFrame : Acquisition.NumberOfFrames
+% Start time and array for holding execution times for performance
+% quantification:
+tstart = tic;
+execution_times = zeros(1,Acquisition.NumberOfFrames);
+saveExecutionTimes = false;
+
+for frame = Acquisition.StartFrame : Acquisition.EndFrame
     display(['frame ', num2str(frame)])
     
     RF = cell(1,length(sequence));
@@ -181,7 +191,7 @@ for frame = Acquisition.StartFrame : Acquisition.NumberOfFrames
             sensor_data = hybrid_simulator(...
                 mask_idx_trans,...
                 sensed_p, ...
-                MB, kgrid, Grid, medium, run_param, ...
+                MB, Grid, medium, run_param, ...
                 Medium, Microbubble, Transmit);
 
             % Update sensor data transducer:
@@ -200,7 +210,7 @@ for frame = Acquisition.StartFrame : Acquisition.NumberOfFrames
         end
         
         % Compute element RF data recorded by transducer:
-        RF{pulse_seq_idx} = compute_RF(...
+        [RF{pulse_seq_idx}, run_param] = compute_RF_data(...
             Transducer,sensor_data,sensor_weights,Grid,run_param);
         
         Frame{pulse_seq_idx} = MB;
@@ -214,6 +224,14 @@ for frame = Acquisition.StartFrame : Acquisition.NumberOfFrames
     file_name = ['Frame_', num2str(frame,['%0',num_padding,'i']),'.mat'];
     save([savedir filesep file_name], 'RF', 'dt', 'Frame')
     
+    execution_times(frame) = toc(tstart);
+    
+end
+
+% Save execution times for performance quantification if requested:
+if saveExecutionTimes == true
+    file_name = 'execution_time_history.mat';
+    save([savedir filesep file_name], 'execution_times')
 end
 
 end

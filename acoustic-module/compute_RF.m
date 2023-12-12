@@ -1,5 +1,9 @@
 function RF = compute_RF(Transducer, sensor_data, sensor_weights, ...
     Grid, run_param)
+%COMPUTE_RF Convert pressure sensor data on the transducer to voltage
+%element data.
+%
+% Nathan Blanken, University of Twente, 2023
 
 % Get number of transducer elements, number of integration points per
 % element and number of dimensions:
@@ -7,7 +11,7 @@ function RF = compute_RF(Transducer, sensor_data, sensor_weights, ...
 M = size(sensor_data.p,2); % Signal length
 
 % Get data casting properties:
-switch run_param.DATA_CAST
+switch run_param.DATA_CAST_RF
     case 'gpuArray-single'
         dataType = 'single';
         useGPU   = true;
@@ -24,20 +28,24 @@ end
 
 apod   = Transducer.integration_receive_apodization;
 delays = Transducer.integration_receive_delays(:);
+apod   = cast(apod,  dataType);
 delays = cast(delays,dataType);
 
 % Compute signal length required to apply the delays:
 N = M + ceil(max(delays)/Grid.dt);
 
 % Get a signal length with small prime factors:
-max_prime = 7;
-N = optimize_grid_size(N, [0 10], max_prime);
+max_expansion = max(10,round(N*0.05));
+max_prime = 5;
+N = optimize_grid_size(N, [0 max_expansion], max_prime);
 
 % Sensed pressure at integration points:
 disp('Computing pressure at transducer integration points ...')
 if useGPU
     sensor_weights = gpuArray(sensor_weights);
-    sensor_data.p = gpuArray(sensor_data.p);
+    sensor_data.p  = gpuArray(sensor_data.p);
+else 
+    sensor_data.p  = gather(sensor_data.p);
 end
 p = sensor_weights*double(sensor_data.p);
 p = cast(p,dataType);
@@ -54,6 +62,7 @@ disp('Applying lens delays ...')
 if useGPU
     delays = gpuArray(delays); 
     f      = gpuArray(f); 
+    apod   = gpuArray(apod); 
 end
 p = fft(p,N,2);
 p = p.*exp(-2*pi*1i*delays*f);

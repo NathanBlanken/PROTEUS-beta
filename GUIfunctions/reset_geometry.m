@@ -5,10 +5,6 @@ if ~isfield(Geometry,'Folder')
     Geometry.Folder = 'renal_tree';
 end
 
-if ~isfield(Geometry,'StreamlinesFile')
-    Geometry.StreamlinesFile = 'StreamsRnd.mat';
-end
-
 % Full path to the geometry data:
 geometry_path = [PATHS.GeometriesPath filesep Geometry.Folder];
 

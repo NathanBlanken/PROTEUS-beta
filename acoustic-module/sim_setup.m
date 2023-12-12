@@ -36,6 +36,8 @@ switch SimulationParameters.Solver
         run_param.BINARY_PATH  = PATHS.BinaryPath;
 end
 
+% Data cast for the final RF computation step:
+run_param.DATA_CAST_RF = run_param.DATA_CAST;
 
 % Add toolbox paths:
 addpath(PATHS.VoxelisationPath);
@@ -54,5 +56,9 @@ run_param.GroundTruthPath = PATHS.GroundTruthPath;
 run_param.MicrobubblePath = PATHS.MicrobubblePath;
 
 run_param.N_interactions = SimulationParameters.NumberOfInteractions;
+
+% Microbubbles parallel processing properties:
+run_param.MicrobubblesBatchSize = 15;
+run_param.MicrobubblesUseParfor = 'auto';
 
 end

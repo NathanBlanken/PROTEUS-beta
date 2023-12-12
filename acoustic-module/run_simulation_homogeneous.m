@@ -25,6 +25,8 @@ N_sensor    = size(sensor.points,1);   	% Number of sensors
 dataType = class(source.mass_source); % 'single' or 'double'
 if strcmp(run_param.DATA_CAST,'gpuArray-single') || ...
    strcmp(run_param.DATA_CAST,'gpuArray-double')
+    disp(['Selected and reset GPU device ' ...
+        num2str(run_param.DEVICE_NUM) '.']);
     gpuDevice(run_param.DEVICE_NUM + 1);
     sensor_data.p      = gpuArray(zeros(N_sensor,kgrid.Nt, dataType));
     source.mass_source = gpuArray(source.mass_source);

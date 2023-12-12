@@ -1,21 +1,47 @@
 function mass_source = compute_bubble_mass_source(...
     sensed_p,  radii, kgrid, Medium, Microbubble, Transmit)
-% =========================================================================
-% Compute bubble response and convert to mass source.
-% input:    sensed_p: pressure sensed by the bubbles
-%           radii:    microbubble radii
-%           kgrid:    the k-Wave grid
-% output:   mass_source
-%           
-% MBs vibrate under insonification from transducer, producing pressure
-% waves of their own. The responses are estimated with Marmottant model.
-% =========================================================================
+%COMPUTE_BUBBLE_MASS_SOURCE computes the response of microbubbles to
+%pressure signals sensed_p and converts the response to a mass source
+%matrix.
+%
+% Nathan Blanken, Guillaume Lajoinie, University of Twente, 2023
+
+disp('=================================================================')
+disp('ENTERING MICROBUBBLE MODULE')
+disp('=================================================================')
 
 % Number of microbubbles and signal length:
 [N_MB,N] = size(sensed_p);
 
 % Sampling rate for the microbubble module:
 fs_MB = Microbubble.SamplingRate;
+
+% Divide the microbubbles into batches (only a limited number can be
+% processed in parallel)
+batchSize = Microbubble.BatchSize;
+Nbatch = ceil(N_MB/batchSize); % Total number of batches
+
+% Decide whether to use parfor loop or not:
+switch Microbubble.UseParfor
+    case 'on'
+        useparfor = true;
+    case 'off'
+        useparfor = false;
+    case 'auto'
+        if Nbatch>8
+            useparfor = true;
+        else
+            useparfor = false;
+        end
+end
+
+% Time vectors for k-Wave signals and microbubble module signals:
+t_kwave = (0:(N-1))*kgrid.dt;
+M = floor(t_kwave(end)*fs_MB) + 1;
+t_MB    = (0:(M-1)) / fs_MB;
+
+% Resample signal at the sampling rate of the microbubble module:
+sensed_p = sinc_interpolation(t_kwave, transpose(sensed_p), t_MB);
 
 % Filter settings:
 Filter.dt          = 1/fs_MB;
@@ -28,56 +54,87 @@ Filter.sound_speed = Medium.SpeedOfSoundMinimum;
 pulse.f  = Transmit.CenterFrequency;
 pulse.w  = pulse.f * 2 * pi;    
 pulse.fs = fs_MB;
+pulse.tq = t_MB;
+pulse.t  = t_MB;
+pulse.dispProgress = false; % Do not show ODE solver progress
 
-% Time vectors for k-Wave signals and microbubble module signals:
-t_kwave = (0:(N-1))*kgrid.dt;
-M = floor(t_kwave(end)*fs_MB) + 1;
-t_MB    = (0:(M-1)) / fs_MB;
+% Get the properties of the liquid, gas, and shell:
+[liquid, gas] = get_microbubble_material_properties(Medium, Microbubble);
 
-% Preallocate the bubble pressure matrix:
+% Convert radii into a row vector to ensure bubble and shell are also row
+% vectors:
+radii = transpose(radii);
+
+% Preallocate the mass source matrix:
 mass_source = zeros(N_MB,M,class(sensed_p));
 
-% Resample signal at the sampling rate of the microbubble module:
-sensed_p = sinc_interpolation(t_kwave, transpose(sensed_p), t_MB);
+% Loop over all MBs to compute response:
+if useparfor
+    
+    % Write the sensed pressure and the radii to cell arrays, each cell
+    % holding the values for one batch:
+    sensed_p_cell = cell(1,Nbatch);
+	radii_cell = cell(1,Nbatch);
+    
+    for k = 1:Nbatch
+        
+        % Microbubble indices in the current batch:
+        idx = get_batch_indices(k, N_MB, batchSize, radii);
+        
+        sensed_p_cell{k} = sensed_p(idx,:);
+        radii_cell{k} = radii(idx);
+    end
+    
+    % Cell array for holding the results of the parfor loop:
+    mass_source_cell = cell(1,Nbatch);
+    
+    parfor k = 1:Nbatch
 
-% loop over all MBs to compute response 
+        disp(['Simulating microbubble batch ' ...
+            num2str(k) '/' num2str(Nbatch) ' ...'])
+
+        mass_source_cell{k} = compute_mass_source(sensed_p_cell{k}, ...
+            radii_cell{k}, Medium, Microbubble, liquid, gas, pulse);
+
+    end
+    
+    % Write the results in the the cell array to a matrix:
+    for k = 1:Nbatch
+        
+        % Microbubble indices in the current batch:
+        idx = get_batch_indices(k, N_MB, batchSize, radii);
+        
+        mass_source(idx,:) = mass_source_cell{k};
+    end
+    
+else
+        
+    for k = 1:Nbatch
+
+        disp(['Simulating microbubble batch ' ...
+            num2str(k) '/' num2str(Nbatch) ' ...'])
+
+        % Microbubble indices in the current batch:
+        idx = get_batch_indices(k, N_MB, batchSize, radii);
+
+        mass_source(idx,:) = compute_mass_source(sensed_p(idx,:), ...
+            radii(idx), Medium, Microbubble, liquid, gas, pulse);
+
+    end
+end
+   
+% Filter unsupported frequencies before downsampling:
 for i = 1:N_MB
-       
-    % Microbubble driving pulse:  
-    pulse.p = sensed_p(i,:);
-    pulse.t = t_MB;
-    
-    % Get the properties of the liquid, gas, and shell:
-    [liquid, gas] = get_microbubble_material_properties(...
-        Medium,Microbubble);
-
-    % Shell properties:
-    shell = get_microbubble_shell_properties(radii(i),Medium,Microbubble);
-
-    % Bubble properties:
-    bubble.R0 = radii(i);          	% Bubble radius (m)
-    bubble.dispProgress = false;    % Do not show ODE solver progress  
-
-    % Compute the bubble response and plot the results
-    disp('=====================================')
-    disp(['Simulating microbubble ' num2str(i) '/' num2str(N_MB) ' ...'])
-    disp('=====================================')
-
-    [response, ~] = calcBubbleResponse(liquid, gas, shell, bubble, pulse);
-    
-    % Compute mass source
-    MS = 4*pi*liquid.rho*response.R.^2 .* response.Rdot;
-    
-    % Filter out unsupported frequencies   
-    MS = filterTimeSeries(Filter, Filter, MS,...
-        'ZeroPhase',true,'TransitionWidth',Filter.TW,'PPW',2);
-
-    mass_source(i,:) = transpose(MS);
-    
+    mass_source(i,:) = filterTimeSeries(Filter,Filter,mass_source(i,:),...
+        'ZeroPhase',true,'TransitionWidth',Filter.TW,'PPW',2);  
 end
 
 % Resample signals at the sampling rate of the acoustic module:
 mass_source = sinc_interpolation(t_MB, transpose(mass_source), t_kwave);
+
+disp('=================================================================')
+disp('EXITING MICROBUBBLE MODULE')
+disp('=================================================================')
 
 end
 
@@ -86,6 +143,43 @@ end
 % FUNCTIONS
 %==========================================================================
 
+function idx = get_batch_indices(batchIndex, N_MB, batchSize, radii)
+% Sort the bubbles by size and group them into batches of batchSize.
+% Bubbles of similar size have similar characteristic timescales. Having
+% similarly sized microbubbles in a batch is expected to speed up
+% computation.
+
+% Linearly increasing indices:
+idxLinear = (batchIndex-1)*batchSize + (1:batchSize);
+idxLinear(idxLinear>N_MB) = [];
+
+% Microbubble indices sorted by size:
+[~,idxSort] = sort(radii);
+idx = idxSort(idxLinear);
+end
+
+function mass_source = compute_mass_source(...
+    sensed_p,  radii, Medium, Microbubble, liquid, gas, pulse)
+
+% Microbubble driving pulses:
+pulse.p = sensed_p;
+
+% Shell properties:
+shell = arrayfun(@(x) ...
+    get_microbubble_shell_properties(x,Medium,Microbubble),radii);
+
+% Bubble properties (radius in meters):
+bubble = arrayfun(@(x) struct('R0',x), radii);
+
+% Compute the bubble response:
+response = calcBubbleResponse(liquid, gas, shell, bubble, pulse);
+
+% Compute mass source for the current batch:
+R    = transpose([response.R]);
+Rdot = transpose([response.Rdot]);   
+mass_source = 4*pi*liquid.rho*R.^2 .*Rdot;
+
+end
 
 function [liquid, gas] = get_microbubble_material_properties(...
     Medium, Microbubble)

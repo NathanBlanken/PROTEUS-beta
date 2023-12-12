@@ -51,13 +51,16 @@ Ny = Y2 - Y1 + 1;
 Nz = Z2 - Z1 + 1;
 
 % Largest allowable prime factor in full grid size:
-max_prime = 7; 
+maxPrime = 5; 
+
+% Minimum PML thickness:
+PML_min = 15;
 
 % Choose the size of the full grid (k-Wave grid and perfectly matched 
 % layer) to have small prime factors:
-Mx = optimize_grid_size(Nx, [40, 80], max_prime);
-My = optimize_grid_size(Ny, [40, 80], max_prime);
-Mz = optimize_grid_size(Nz, [20, 60], max_prime);
+Mx = optimize_grid_size(Nx, 2*PML_min, maxPrime);
+My = optimize_grid_size(Ny, 2*PML_min, maxPrime);
+Mz = optimize_grid_size(Nz, 2*PML_min, maxPrime);
 
 % Size of the perfectly matched layer (PML):
 PML.X_SIZE = ceil((Mx-Nx)/2);

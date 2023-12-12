@@ -6,7 +6,7 @@ close all
 % SETTINGS
 %==========================================================================
 
-geometryFolder = '../geometry_data/renal_tree';
+geometryFolder = uigetdir(['..' filesep 'geometry_data']);
 
 % Convolution kernel parameters (smoothing parameters):
 conv_kernel_size = 21; % Convolution kernel size 

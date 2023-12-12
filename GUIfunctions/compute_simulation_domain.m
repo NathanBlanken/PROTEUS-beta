@@ -3,12 +3,9 @@ function Geometry = compute_simulation_domain(...
 % Compute the required simulation domain. The simulation domain should
 % capture the beam up to the maximum depth of the vessel tree.
 
-% Rotate the diagonal of the bounding box:
-diagVec = Geometry.Rotation*Geometry.BoundingBox.Diagonal;
-
 % Add the depth of the rotated bounding box to the start depth:
 startDepth = Geometry.startDepth;
-endDepth   = Geometry.startDepth + abs(diagVec(1));
+endDepth   = compute_end_depth(Geometry);
 
 % Compute the vertices of the transducer surface and its projection on the
 % back surface of the domain:
@@ -158,5 +155,22 @@ Yp = [yr yl yl yr];
 Zp = [zt zt zb zb];
 
 TRANS_PROJECTION = transpose([Xp; Yp; Zp]);
+
+end
+
+function endDepth = compute_end_depth(Geometry)
+% Compute the end depth of the geometry based on the maximum seperation of
+% the bounding box vertices along the x axis.
+
+% Vertices of cube with sides of unit length (3-by-8 array):
+P = [-1 -1 -1 -1 1 1 1 1; -1 -1 1 1 -1 -1 1 1; -1 1 -1 1 -1 1 -1 1]/2;
+
+% Bounding box of the geometry centred about the origin:
+BB = Geometry.BoundingBox.Diagonal.*P;
+
+% Rotate the bounding box:
+BB = Geometry.Rotation*BB;
+
+endDepth = Geometry.startDepth + max(BB(1,:))-min(BB(1,:));
 
 end
